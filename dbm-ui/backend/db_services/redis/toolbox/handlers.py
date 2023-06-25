@@ -10,9 +10,10 @@ specific language governing permissions and limitations under the License.
 """
 import itertools
 import json
+from collections import defaultdict
 from typing import Dict
 
-from django.db.models import Q, Count
+from django.db.models import Q, Count, F
 
 from backend.db_meta.enums import InstanceRole
 from backend.db_meta.models import ProxyInstance, StorageInstance, Cluster, ClusterDeployPlan, StorageInstanceTuple
@@ -81,3 +82,35 @@ class ToolboxHandler:
             results.append(cluster_result)
 
         return results
+
+    def query_master_slave_pairs(self, cluster_id: int) -> list:
+        """查询主从架构集群的关系对"""
+
+        try:
+            cluster = Cluster.objects.get(pk=cluster_id, bk_biz_id=self.bk_biz_id)
+        except Cluster.DoesNotExist:
+            return []
+
+        pairs = StorageInstanceTuple.objects.filter(
+            receiver__cluster=cluster,
+            ejector__cluster=cluster
+        ).values(
+            master_id=F("ejector__id"), master_ip=F("ejector__machine__ip"), master_port=F("ejector__port"),
+            slave_id=F("receiver__id"), slave_ip=F("receiver__machine__ip"), slave_port=F("receiver__port")
+        )
+
+        # 按照ip合并
+        pairs_grouped = defaultdict(list)
+        for pair in pairs:
+            pairs_grouped[f"{pair['master_ip']}:{pair['slave_ip']}"].append(pair["master_port"])
+
+        result = []
+        for key, ports in pairs_grouped.items():
+            master_ip, slave_ip = key.split(":")
+            result.append({
+                "master_ip": master_ip,
+                "slave_ip": slave_ip,
+                "ports": ports,
+            })
+
+        return result

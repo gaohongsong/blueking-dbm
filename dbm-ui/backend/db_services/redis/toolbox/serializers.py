@@ -167,3 +167,12 @@ class QueryMasterSlaveByIpResultSerializer(serializers.Serializer):
                 }
             ]
         }
+
+
+class QueryByOneClusterSerializer(serializers.Serializer):
+    cluster_id = serializers.IntegerField(help_text=_("集群id"))
+
+    class Meta:
+        swagger_schema_fields = {
+            "example": {"custer_id": 1}
+        }
