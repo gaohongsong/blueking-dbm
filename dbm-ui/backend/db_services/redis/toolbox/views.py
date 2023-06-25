@@ -73,3 +73,11 @@ class ToolboxViewSet(viewsets.SystemViewSet):
     def query_master_slave_pairs(self, request, bk_biz_id, **kwargs):
         validated_data = self.params_validate(self.get_serializer_class())
         return Response(ToolboxHandler(bk_biz_id).query_master_slave_pairs(validated_data["cluster_id"]))
+
+    @common_swagger_auto_schema(
+        operation_summary=_("根据业务ID查询集群列表"),
+        tags=[SWAGGER_TAG],
+    )
+    @action(methods=["GET"], detail=False, serializer_class=None, pagination_class=None)
+    def query_cluster_list(self, request, bk_biz_id, **kwargs):
+        return Response(ToolboxHandler(bk_biz_id).query_cluster_list())
