@@ -40,6 +40,16 @@ const routes: RouteRecordRaw[] = [
         },
         component: () => import('@views/resource-pool/list/Index.vue'),
       },
+      {
+        name: 'resourcePoolOperationRecord',
+        path: 'record',
+        meta: {
+          routeParentName: MainViewRouteNames.Platform,
+          navName: t('操作记录'),
+          activeMenu: 'resourcePoolManage',
+        },
+        component: () => import('@views/resource-pool/record/Index.vue'),
+      },
     ],
   },
 ];

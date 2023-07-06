@@ -10,17 +10,19 @@ specific language governing permissions and limitations under the License.
 
 from backend.db_meta.enums import ClusterType
 from backend.flow.engine.bamboo.scene.spider.import_sqlfile_flow import ImportSQLFlow
+from backend.flow.engine.bamboo.scene.spider.spider_add_mnt import TenDBClusterAddSpiderMNTFlow
 from backend.flow.engine.bamboo.scene.spider.spider_add_nodes import TenDBClusterAddNodesFlow
-from backend.flow.engine.bamboo.scene.spider.spider_add_tmp_node import SpiderAddTmpNodeFlow
 from backend.flow.engine.bamboo.scene.spider.spider_checksum import SpiderChecksumFlow
 from backend.flow.engine.bamboo.scene.spider.spider_cluster_db_table_backup import TenDBClusterDBTableBackupFlow
 from backend.flow.engine.bamboo.scene.spider.spider_cluster_deploy import TenDBClusterApplyFlow
 from backend.flow.engine.bamboo.scene.spider.spider_cluster_destroy import TenDBClusterDestroyFlow
 from backend.flow.engine.bamboo.scene.spider.spider_cluster_disable_deploy import SpiderClusterDisableFlow
 from backend.flow.engine.bamboo.scene.spider.spider_cluster_enable_deploy import SpiderClusterEnableFlow
+from backend.flow.engine.bamboo.scene.spider.spider_cluster_flashback import TenDBClusterFlashbackFlow
 from backend.flow.engine.bamboo.scene.spider.spider_cluster_full_backup import TenDBClusterFullBackupFlow
 from backend.flow.engine.bamboo.scene.spider.spider_cluster_truncate_database import SpiderTruncateDatabaseFlow
 from backend.flow.engine.bamboo.scene.spider.spider_partition import SpiderPartitionFlow
+from backend.flow.engine.bamboo.scene.spider.spider_reduce_nodes import TenDBClusterReduceNodesFlow
 from backend.flow.engine.bamboo.scene.spider.spider_rename_database_flow import SpiderRenameDatabaseFlow
 from backend.flow.engine.bamboo.scene.spider.spider_slave_cluster_deploy import TenDBSlaveClusterApplyFlow
 from backend.flow.engine.controller.base import BaseController
@@ -45,9 +47,9 @@ class SpiderController(BaseController):
         flow = TenDBClusterDestroyFlow(root_id=self.root_id, data=self.ticket_data)
         flow.destroy_cluster()
 
-    def spider_add_tmp_node_scene(self):
-        flow = SpiderAddTmpNodeFlow(root_id=self.root_id, data=self.ticket_data)
-        flow.spider_add_tmp_node_with_manual_input()
+    def add_spider_mnt_scene(self):
+        flow = TenDBClusterAddSpiderMNTFlow(root_id=self.root_id, data=self.ticket_data)
+        flow.add_spider_mnt()
 
     def spider_checksum(self):
         """
@@ -121,3 +123,16 @@ class SpiderController(BaseController):
     def full_backup(self):
         flow = TenDBClusterFullBackupFlow(root_id=self.root_id, data=self.ticket_data)
         flow.full_backup_flow()
+
+    def reduce_spider_nodes_scene(self):
+        """
+        缩容接入层的场景
+        """
+        flow = TenDBClusterReduceNodesFlow(root_id=self.root_id, data=self.ticket_data)
+        flow.reduce_spider_nodes()
+
+    def flashback(self):
+        flow = TenDBClusterFlashbackFlow(
+            root_id=self.root_id, data=self.ticket_data, cluster_type=ClusterType.TenDBCluster.value
+        )
+        flow.flashback()

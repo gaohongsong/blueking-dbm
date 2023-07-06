@@ -1,12 +1,24 @@
+/*
+ * TencentBlueKing is pleased to support the open source community by making 蓝鲸智云-DB管理系统(BlueKing-BK-DBM) available.
+ * Copyright (C) 2017-2023 THL A29 Limited, a Tencent company. All rights reserved.
+ * Licensed under the MIT License (the "License"); you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at https://opensource.org/licenses/MIT
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+ * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations under the License.
+ */
+
 package apply
 
 import (
+	"encoding/json"
 	"fmt"
 	"path"
 	"time"
 
 	"dbm-services/common/db-resource/internal/model"
 	"dbm-services/common/go-pubpkg/cmutil"
+	"dbm-services/common/go-pubpkg/logger"
 )
 
 // ParamCheck TODO
@@ -14,7 +26,7 @@ func (param *ApplyRequestInputParam) ParamCheck() (err error) {
 	for _, a := range param.Details {
 		// 如果只是申请一个机器，则没有亲和性的必要
 		if a.Count <= 1 {
-			return nil
+			continue
 		}
 		switch a.Affinity {
 		case SAME_SUBZONE, SAME_SUBZONE_CROSS_SWTICH:
@@ -51,27 +63,51 @@ type ActionInfo struct {
 type ApplyRequestInputParam struct {
 	ResourceType string              `json:"resource_type"` // 申请的资源用作的用途 Redis|MySQL|Proxy
 	DryRun       bool                `json:"dry_run"`
-	BkCloudId    int                 `json:"bk_cloud_id"  binding:"number"`
+	BkCloudId    int                 `json:"bk_cloud_id"`
 	ForbizId     int                 `json:"for_biz_id"`
 	Details      []ApplyObjectDetail `json:"details" binding:"required,gt=0,dive"`
 	ActionInfo
 }
 
 // GetOperationInfo TODO
-func (c ApplyRequestInputParam) GetOperationInfo(requestId string) model.TbRpOperationInfo {
+func (c ApplyRequestInputParam) GetOperationInfo(requestId, mode string,
+	data []model.BatchGetTbDetailResult) model.TbRpOperationInfo {
 	var count int
+	var bkHostIds []int
+	var ipList []string
 	for _, v := range c.Details {
 		count += v.Count
+	}
+	for _, group := range data {
+		for _, host := range group.Data {
+			bkHostIds = append(bkHostIds, host.BkHostID)
+			ipList = append(ipList, host.IP)
+		}
+	}
+	var desc string
+	bkHostIdsBytes, err := json.Marshal(bkHostIds)
+	if err != nil {
+		desc += "failed to serialize bkhost ids"
+		logger.Error("json marshal failed  %s", err.Error())
+	}
+	ipListBytes, err := json.Marshal(ipList)
+	if err != nil {
+		desc += "failed to serialize ipList"
+		logger.Error("json marshal failed  %s", err.Error())
 	}
 	return model.TbRpOperationInfo{
 		RequestID:     requestId,
 		TotalCount:    count,
 		OperationType: model.Consumed,
+		BkHostIds:     bkHostIdsBytes,
+		IpList:        ipListBytes,
 		BillId:        c.BillId,
 		TaskId:        c.TaskId,
 		Operator:      c.Operator,
+		Status:        mode,
 		CreateTime:    time.Now(),
 		UpdateTime:    time.Now(),
+		Desc:          desc,
 	}
 }
 
@@ -96,6 +132,7 @@ const (
 
 // ApplyObjectDetail TODO
 type ApplyObjectDetail struct {
+	BkCloudId int               `json:"bk_cloud_id"`
 	GroupMark string            `json:"group_mark" binding:"required" ` // 资源组标记
 	Labels    map[string]string `json:"labels"`                         // 标签
 	// 通过机型规格 或者 资源规格描述来匹配资源

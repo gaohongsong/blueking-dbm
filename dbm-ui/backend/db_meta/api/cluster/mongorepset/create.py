@@ -51,6 +51,8 @@ def pkg_create_mongoset(
     creator: str = "",
     bk_cloud_id: int = DEFAULT_BK_CLOUD_ID,
     region: str = "",
+    spec_id: int = 0,
+    spec_config: str = "",
     cluster_type=ClusterType.MongoReplicaSet.value,
 ):
     """
@@ -74,7 +76,7 @@ def pkg_create_mongoset(
     before_create_domain_precheck(domains)
     before_create_storage_precheck(storages)
 
-    create_mongo_instances(bk_biz_id, bk_cloud_id, MachineType.MONGODB.value, storages)
+    create_mongo_instances(bk_biz_id, bk_cloud_id, MachineType.MONGODB.value, storages, spec_id, spec_config)
     create_mongoset(
         bk_biz_id=bk_biz_id,
         name=name,

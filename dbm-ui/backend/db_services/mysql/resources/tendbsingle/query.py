@@ -22,9 +22,9 @@ from backend.db_meta.models import AppCache
 from backend.db_meta.models.cluster import Cluster
 from backend.db_meta.models.db_module import DBModule
 from backend.db_meta.models.instance import StorageInstance
+from backend.db_services.dbbase.instances.handlers import InstanceHandler
 from backend.db_services.dbbase.resources import query
 from backend.db_services.ipchooser.query.resource import ResourceQueryHelper
-from backend.db_services.mysql.instance.handlers import InstanceHandler
 from backend.ticket.models import ClusterOperateRecord
 from backend.utils.time import datetime2str
 
@@ -206,10 +206,11 @@ class ListRetrieveResource(query.ListRetrieveResource):
             "bk_cloud_name": cloud_info[str(instance.machine.bk_cloud_id)]["bk_cloud_name"],
             "ip": instance.machine.ip,
             "port": instance.port,
-            "instance_address": f"{instance.machine.ip}{IP_PORT_DIVIDER}{instance.port}",
+            "instance_address": instance.ip_port,
             "bk_host_id": instance.machine.bk_host_id,
             "role": instance.instance_inner_role,
             "master_domain": instance.bind_entry.first().entry,
             "status": instance.status,
+            "spec_config": instance.machine.spec_config,
             "create_at": datetime2str(instance.create_at),
         }

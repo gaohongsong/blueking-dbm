@@ -58,7 +58,6 @@ class SpiderDBMeta(object):
             "creator": self.global_data["created_by"],
             "time_zone": self.cluster["time_zone_info"]["time_zone"],
             "bk_cloud_id": int(self.global_data["bk_cloud_id"]),
-            "deploy_plan_id": int(self.global_data["deploy_plan_id"]),
             "resource_spec": self.global_data["resource_spec"],
             "shard_infos": shard_infos,
             "region": self.global_data["city"],
@@ -112,4 +111,27 @@ class SpiderDBMeta(object):
         对已有的TenDB cluster集群 （spider集群）扩容spider-master节点
         todo 后续tdbctl新版本出现在补齐
         """
+        return True
+
+    def reduce_spider_nodes_apply(self):
+        """
+        对已有的TenDB cluster集群 （spider集群）缩容spider节点，这里不区分spider角色
+        """
+        TenDBClusterClusterHandler.reduce_spider(
+            cluster_id=self.global_data["cluster_id"],
+            spiders=self.global_data["reduce_spiders"],
+        )
+        return True
+
+    def add_spider_mnt(self):
+        """
+        已有集群添加运维节点
+        """
+        kwargs = {
+            "cluster_id": self.global_data["cluster_id"],
+            "creator": self.global_data["created_by"],
+            "spider_version": self.global_data["spider_version"],
+            "spider_mnts": self.global_data["spider_ip_list"],
+        }
+        TenDBClusterClusterHandler.spider_mnt_create(**kwargs)
         return True

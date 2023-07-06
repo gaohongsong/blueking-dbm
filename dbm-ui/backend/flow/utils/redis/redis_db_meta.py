@@ -8,11 +8,16 @@ Unless required by applicable law or agreed to in writing, software distributed 
 an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License.
 """
+import base64
 import logging
+from typing import Any
 
+from django.db import transaction
 from django.db.transaction import atomic
 from django.utils.translation import ugettext as _
 
+from backend.components import DBConfigApi
+from backend.components.dbconfig.constants import FormatType, LevelName, OpType, ReqType
 from backend.db_meta import api
 from backend.db_meta.api.cluster.tendiscache.handler import TendisCacheClusterHandler
 from backend.db_meta.api.cluster.tendispluscluster.handler import TendisPlusClusterHandler
@@ -20,7 +25,8 @@ from backend.db_meta.api.cluster.tendisssd.handler import TendisSSDClusterHandle
 from backend.db_meta.enums import ClusterPhase, ClusterType, InstanceInnerRole, InstanceRole, MachineType
 from backend.db_meta.models import Cluster, StorageInstance
 from backend.db_services.dbbase.constants import IP_PORT_DIVIDER, SPACE_DIVIDER
-from backend.flow.consts import DEFAULT_DB_MODULE_ID, InstanceStatus
+from backend.db_services.redis.rollback.models import TbTendisRollbackTasks
+from backend.flow.consts import DEFAULT_DB_MODULE_ID, ConfigFileEnum, ConfigTypeEnum, InstanceStatus
 from backend.ticket.constants import TicketType
 
 logger = logging.getLogger("flow")
@@ -63,7 +69,15 @@ class RedisDBMeta(object):
         proxies = []
         machine_type = self.cluster["machine_type"]
         for ip in self.cluster["new_proxy_ips"]:
-            machines.append({"bk_biz_id": self.cluster["bk_biz_id"], "ip": ip, "machine_type": machine_type})
+            machines.append(
+                {
+                    "bk_biz_id": self.cluster["bk_biz_id"],
+                    "ip": ip,
+                    "machine_type": machine_type,
+                    "spec_id": self.cluster["spec_id"],
+                    "spec_config": self.cluster["spec_config"],
+                }
+            )
             proxies.append({"ip": ip, "port": self.cluster["port"]})
 
         with atomic():
@@ -77,20 +91,13 @@ class RedisDBMeta(object):
 
     def proxy_add_cluster(self) -> bool:
         """
-        proxy上架，并加入集群
+        proxy只做加入集群操作
         """
         proxies = []
-        machines = []
-        machine_type = self.cluster["machine_type"]
         for ip in self.cluster["proxy_ips"]:
             proxies.append({"ip": ip, "port": self.cluster["proxy_port"]})
-            machines.append({"bk_biz_id": self.ticket_data["bk_biz_id"], "ip": ip, "machine_type": machine_type})
         cluster = Cluster.objects.get(immute_domain=self.cluster["domain_name"])
         with atomic():
-            api.machine.create(
-                machines=machines, creator=self.ticket_data["created_by"], bk_cloud_id=self.ticket_data["bk_cloud_id"]
-            )
-            api.proxy_instance.create(proxies=proxies)
             api.cluster.nosqlcomm.add_proxies(cluster, proxies=proxies)
         return True
 
@@ -146,35 +153,58 @@ class RedisDBMeta(object):
         """
         Redis实例上架、单机器级别。
         """
-        machines = []
-        ins = []
-        if self.ticket_data["cluster_type"] == ClusterType.TendisTwemproxyRedisInstance.value:
+        machines, ins, cluster_type = [], [], ""
+        if "cluster_type" in self.ticket_data:
+            cluster_type = self.ticket_data["cluster_type"]
+        else:
+            cluster_type = self.cluster["cluster_type"]
+
+        if cluster_type == ClusterType.TendisTwemproxyRedisInstance.value:
             machine_type = MachineType.TENDISCACHE.value
-        elif self.ticket_data["cluster_type"] == ClusterType.TendisPredixyTendisplusCluster.value:
+        elif cluster_type == ClusterType.TendisPredixyTendisplusCluster.value:
             machine_type = MachineType.TENDISPLUS.value
-        elif self.ticket_data["cluster_type"] == ClusterType.TwemproxyTendisSSDInstance.value:
+        elif cluster_type == ClusterType.TwemproxyTendisSSDInstance.value:
             machine_type = MachineType.TENDISSSD.value
         else:
             machine_type = ""
 
         if self.cluster.get("new_master_ips"):
             for ip in self.cluster.get("new_master_ips"):
-                machines.append({"bk_biz_id": self.ticket_data["bk_biz_id"], "ip": ip, "machine_type": machine_type})
+                machines.append(
+                    {
+                        "bk_biz_id": self.ticket_data["bk_biz_id"],
+                        "ip": ip,
+                        "machine_type": machine_type,
+                        "spec_id": self.cluster["spec_id"],
+                        "spec_config": self.cluster["spec_config"],
+                    }
+                )
                 for n in range(0, self.cluster["inst_num"]):
                     port = n + self.cluster["start_port"]
                     ins.append({"ip": ip, "port": port, "instance_role": InstanceRole.REDIS_MASTER.value})
 
         if self.cluster.get("new_slave_ips"):
             for ip in self.cluster.get("new_slave_ips"):
-                machines.append({"bk_biz_id": self.ticket_data["bk_biz_id"], "ip": ip, "machine_type": machine_type})
+                machines.append(
+                    {
+                        "bk_biz_id": self.ticket_data["bk_biz_id"],
+                        "ip": ip,
+                        "machine_type": machine_type,
+                        "spec_id": self.cluster["spec_id"],
+                        "spec_config": self.cluster["spec_config"],
+                    }
+                )
                 for n in range(0, self.cluster["inst_num"]):
                     port = n + self.cluster["start_port"]
                     ins.append({"ip": ip, "port": port, "instance_role": InstanceRole.REDIS_SLAVE.value})
 
         with atomic():
-            api.machine.create(
-                machines=machines, creator=self.ticket_data["created_by"], bk_cloud_id=self.ticket_data["bk_cloud_id"]
-            )
+            bk_cloud_id = 0
+            if "bk_cloud_id" in self.ticket_data:
+                bk_cloud_id = self.ticket_data["bk_cloud_id"]
+            else:
+                bk_cloud_id = self.cluster["bk_cloud_id"]
+            api.machine.create(machines=machines, creator=self.ticket_data["created_by"], bk_cloud_id=bk_cloud_id)
             api.storage_instance.create(instances=ins, creator=self.ticket_data["created_by"])
         return True
 
@@ -355,11 +385,11 @@ class RedisDBMeta(object):
             tendiss, replic_tuple = [], []
             for relation in self.cluster["sync_relation"]:
                 receiver = relation["receiver"]
-                slave_obj = StorageInstance.objects.filter(machine__ip=receiver["ip"], port=receiver["port"])
+                slave_obj = StorageInstance.objects.get(machine__ip=receiver["ip"], port=receiver["port"])
                 slave_obj.cluster_type = self.cluster["cluster_type"]
                 slave_obj.instance_role = InstanceRole.REDIS_SLAVE.value
                 slave_obj.instance_inner_role = InstanceInnerRole.SLAVE.value
-                slave_obj.update(update_fields=["instance_role", "instance_inner_role", "cluster_type"])
+                slave_obj.save(update_fields=["instance_role", "instance_inner_role", "cluster_type"])
 
                 tendiss.append(
                     {
@@ -387,3 +417,71 @@ class RedisDBMeta(object):
             bk_cloud_id=self.cluster["bk_cloud_id"], immute_domain=self.cluster["immute_domain"]
         )
         api.cluster.nosqlcomm.switch_tendis(cluster=cluster, tendisss=self.cluster["sync_relation"])
+
+    def update_rollback_task_status(self) -> bool:
+        """
+        更新构造记录为已销毁
+        """
+        task = TbTendisRollbackTasks.objects.filter(
+            related_rollback_bill_id=self.cluster["related_rollback_bill_id"],
+            bk_biz_id=self.cluster["bk_biz_id"],
+            prod_cluster=self.cluster["prod_cluster"],
+        ).update(is_destroyed=1)
+        return task
+
+    def __get_cluster_config(self, domain_name: str, db_version: str, conf_type: str, namespace: str) -> Any:
+        """
+        获取已部署的实例配置
+        """
+
+        data = DBConfigApi.query_conf_item(
+            params={
+                "bk_biz_id": str(self.ticket_data["bk_biz_id"]),
+                "level_name": LevelName.CLUSTER,
+                "level_value": domain_name,
+                "level_info": {"module": str(DEFAULT_DB_MODULE_ID)},
+                "conf_file": db_version,
+                "conf_type": conf_type,
+                "namespace": namespace,
+                "format": FormatType.MAP,
+            }
+        )
+        return data["content"]
+
+    @transaction.atomic
+    def data_construction_tasks_operate(self):
+        """
+        写入构造记录元数据
+        """
+
+        if self.cluster["cluster_type"] == ClusterType.TendisTwemproxyRedisInstance.value:
+            self.cluster["proxy_version"] = ConfigFileEnum.Twemproxy
+        elif self.cluster["cluster_type"] == ClusterType.TwemproxyTendisSSDInstance.value:
+            self.cluster["proxy_version"] = ConfigFileEnum.Twemproxy
+        elif self.cluster["cluster_type"] == ClusterType.TendisPredixyTendisplusCluster.value:
+            self.cluster["proxy_version"] = ConfigFileEnum.Predixy
+        proxy_config = self.__get_cluster_config(
+            self.cluster["domain_name"],
+            self.cluster["proxy_version"],
+            ConfigTypeEnum.ProxyConf,
+            self.cluster["cluster_type"],
+        )
+
+        task = TbTendisRollbackTasks(
+            creator=self.ticket_data["created_by"],
+            related_rollback_bill_id=self.ticket_data["uid"],
+            bk_biz_id=self.ticket_data["bk_biz_id"],
+            bk_cloud_id=self.cluster["bk_cloud_id"],
+            prod_cluster_type=self.cluster["prod_cluster_type"],
+            prod_cluster=self.cluster["prod_cluster"],
+            prod_instance_range=self.cluster["prod_instance_range"],
+            temp_cluster_type=self.cluster["temp_cluster_type"],
+            temp_instance_range=self.cluster["temp_instance_range"],
+            temp_password=base64.b64encode(proxy_config["password"].encode("utf-8")),
+            temp_cluster_proxy=self.cluster["temp_cluster_proxy"],
+            prod_temp_instance_pairs=self.cluster["prod_temp_instance_pairs"],
+            host_count=self.cluster["host_count"],
+            recovery_time_point=self.cluster["recovery_time_point"],
+            status=self.cluster["status"],
+        )
+        task.save()

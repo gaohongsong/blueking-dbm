@@ -52,6 +52,9 @@ def ProxyBatchInstallAtomJob(root_id, ticket_data, act_kwargs: ActKwargs, param:
             "redis_pwd":"",
             "proxy_pwd":"",
             "servers":"",
+
+            "spec_id":0,
+            "spec_config": "",
     }
     """
     app = AppCache.get_app_attr(act_kwargs.cluster["bk_biz_id"], "db_app_abbr")
@@ -76,6 +79,11 @@ def ProxyBatchInstallAtomJob(root_id, ticket_data, act_kwargs: ActKwargs, param:
         act_component_code=ExecuteDBActuatorScriptComponent.code,
         kwargs=asdict(act_kwargs),
     )
+
+    # proxy扩容是，config从参数传过来
+    if ticket_data["ticket_type"] == TicketType.PROXY_SCALE_UP.value:
+        act_kwargs.cluster["conf_configs"] = param["conf_configs"]
+        act_kwargs.cluster["dbconfig"] = param["conf_configs"]
 
     # 安装proxy实例
     if act_kwargs.cluster["cluster_type"] == ClusterType.TendisPredixyTendisplusCluster.value:
@@ -104,6 +112,8 @@ def ProxyBatchInstallAtomJob(root_id, ticket_data, act_kwargs: ActKwargs, param:
 
     # 写入元数据
     act_kwargs.cluster["new_proxy_ips"] = [exec_ip]
+    act_kwargs.cluster["spec_id"] = param["spec_id"]
+    act_kwargs.cluster["spec_config"] = param["spec_config"]
     act_kwargs.cluster["meta_func_name"] = RedisDBMeta.proxy_install.__name__
     sub_pipeline.add_act(
         act_name=_("Proxy-004-{}-写入元数据").format(exec_ip),

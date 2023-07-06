@@ -177,6 +177,8 @@ class DeleteClusterDnsKwargs:
     bk_cloud_id: int  # 操作的云区域id
     delete_cluster_id: int  # 操作的集群，回收集群时需要
     dns_op_type: Optional[DnsOpType] = DnsOpType.CLUSTER_DELETE.value  # 操作的域名方式
+    # 是否仅删除从域名
+    is_only_delete_slave_domain: bool = False
 
 
 @dataclass()
@@ -322,7 +324,7 @@ class DelServiceInstKwargs:
     删除集群内服务实例的专属私有变量
     """
 
-    cluster_id: str  # 对应的cluster_id
+    cluster_id: int  # 对应的cluster_id
     del_instance_list: list  # 删除对应的实例信息
 
 

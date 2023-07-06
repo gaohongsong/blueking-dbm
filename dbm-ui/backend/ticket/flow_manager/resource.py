@@ -13,20 +13,18 @@ import importlib
 import uuid
 from collections import defaultdict
 from datetime import date
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from django.utils.translation import gettext as _
 
 from backend.components.dbresource.client import DBResourceApi
 from backend.db_meta.models import Spec
-from backend.db_meta.models.spec import ClusterDeployPlan
 from backend.db_services.dbresource.exceptions import ResourceApplyException
 from backend.ticket import constants
-from backend.ticket.constants import FlowCallbackType, FlowType
+from backend.ticket.constants import AffinityEnum, FlowCallbackType, FlowType
 from backend.ticket.flow_manager.base import BaseTicketFlow
 from backend.ticket.flow_manager.delivery import DeliveryFlow
 from backend.ticket.models import Flow
-from backend.utils.batch_request import request_multi_thread
 from backend.utils.time import datetime2str
 
 
@@ -72,22 +70,6 @@ class ResourceApplyFlow(BaseTicketFlow):
         callback_class = getattr(callback_module, callback_info[f"{FlowCallbackType.POST_CALLBACK}_callback_class"])
         getattr(callback_class(self.ticket), f"{FlowCallbackType.POST_CALLBACK}_callback")()
 
-    def _format_resource_hosts(self, hosts):
-        return [
-            {
-                # 没有业务ID，认为是公共资源
-                "bk_biz_id": host.get("bk_biz_id", 0),
-                "ip": host["ip"],
-                "bk_cloud_id": host["bk_cloud_id"],
-                "bk_host_id": host["bk_host_id"],
-                # 补充机器的内存，cpu和磁盘信息
-                "bk_cpu": host["cpu_num"],
-                "bk_disk": sum([storage["size"] for _, storage in host["storage_device"].items()]),
-                "bk_mem": host["dram_cap"],
-            }
-            for host in hosts
-        ]
-
     def run(self):
         """执行流程并记录流程对象ID"""
         try:
@@ -98,30 +80,34 @@ class ResourceApplyFlow(BaseTicketFlow):
             self.run_error_status_handler(err)
             return
 
+    def _format_resource_hosts(self, hosts):
+        """格式化申请的主机参数"""
+        return [
+            {
+                # 没有业务ID，认为是公共资源
+                "bk_biz_id": host.get("bk_biz_id", 0),
+                "ip": host["ip"],
+                "bk_cloud_id": host["bk_cloud_id"],
+                "bk_host_id": host["bk_host_id"],
+                # 补充机器的内存，cpu和磁盘信息。(bk_disk的单位是GB, bk_mem的单位是MB)
+                "bk_cpu": host["cpu_num"],
+                "bk_disk": host["total_storage_cap"],
+                "bk_mem": host["dram_cap"],
+            }
+            for host in hosts
+        ]
+
     def apply_resource(self, ticket_data):
+        """资源申请"""
         apply_params: Dict[str, Union[str, List]] = {
             "for_biz_id": ticket_data["bk_biz_id"],
-            "bk_cloud_id": ticket_data["bk_cloud_id"],
             "resource_type": self.ticket.group,
-            "details": [],
             "bill_id": str(self.ticket.id),
-            "task_id": self.flow_obj.flow_obj_id,
+            # 消费情况下的task id为inner flow
+            "task_id": self.ticket.next_flow().flow_obj_id,
             "operator": self.ticket.creator,
+            "details": self.fetch_apply_params(ticket_data),
         }
-
-        # 根据规格来申请相应的机器
-        if "resource_spec" in ticket_data:
-            resource_spec = ticket_data["resource_spec"]
-            for role, role_spec in resource_spec.items():
-                apply_params["details"].append(
-                    Spec.objects.get(spec_id=role_spec["spec_id"]).get_apply_params_detail(role, role_spec["count"])
-                )
-
-        # 根据部署方案来申请相应的机器
-        if "resource_plan" in ticket_data:
-            resource_plan = ticket_data["resource_plan"]
-            deploy_plan = ClusterDeployPlan.objects.get(id=resource_plan["resource_plan_id"])
-            apply_params["details"].extend(deploy_plan.get_apply_params_details())
 
         # 向资源池申请机器
         resp = DBResourceApi.resource_pre_apply(params=apply_params, raw=True)
@@ -135,45 +121,89 @@ class ResourceApplyFlow(BaseTicketFlow):
         for info in apply_data:
             role = info["item"]
             host_infos = self._format_resource_hosts(info["data"])
-            node_infos[role] = host_infos
+            # 如果是部署方案的分组，则用backend_group包裹。里面每一小组是一对master/slave;
+            # 否则就按角色分组填入
+            if "backend_group" in role:
+                backend_group_name = role.rsplit("_", 1)[0]
+                node_infos[backend_group_name].append({"master": host_infos[0], "slave": host_infos[1]})
+            else:
+                node_infos[role] = host_infos
 
-        # 针对批量申请的情况，获取当前index
-        index = ticket_data.get("index", None)
+        return resource_request_id, node_infos
 
-        return resource_request_id, node_infos, index
+    def fetch_apply_params(self, ticket_data):
+        """构造资源申请参数"""
+        bk_cloud_id: int = ticket_data["bk_cloud_id"]
+        details: List[Dict[str, Any]] = []
 
-    def patch_resource_params(self, ticket_data):
-        if "resource_spec" in ticket_data:
-            resource_spec = ticket_data["resource_spec"]
-            for role, role_spec in resource_spec.items():
-                resource_spec[role] = {
-                    **Spec.objects.get(spec_id=role_spec["spec_id"]).get_spec_info(),
-                    "count": role_spec["count"],
-                }
+        # 根据规格来填充相应机器的申请参数
+        resource_spec = ticket_data["resource_spec"]
+        for role, role_spec in resource_spec.items():
+            # 如果该存在无需申请，则跳过
+            if not role_spec["count"]:
+                continue
+            # 填充规格申请参数
+            if role == "backend_group":
+                details.extend(
+                    Spec.objects.get(spec_id=role_spec["spec_id"]).get_backend_group_apply_params_detail(
+                        bk_cloud_id=bk_cloud_id, backend_group=role_spec
+                    )
+                )
+            else:
+                details.append(
+                    Spec.objects.get(spec_id=role_spec["spec_id"]).get_apply_params_detail(
+                        group_mark=role,
+                        count=int(role_spec["count"]),
+                        bk_cloud_id=bk_cloud_id,
+                        affinity=role_spec.get("affinity", AffinityEnum.NONE.value),
+                    )
+                )
 
-        if "resource_plan" in ticket_data:
-            # 如果是部署规格，默认规格角色是master和slave，如果需要其他角色类型在post callback钩子函数修改
-            deploy_plan_id = ticket_data["resource_plan"]["resource_plan_id"]
-            ticket_data.update(deploy_plan_id=deploy_plan_id)
+        return details
 
-            deploy_plan = ClusterDeployPlan.objects.get(id=deploy_plan_id)
-            master_spec = slave_spec = {**deploy_plan.spec.get_spec_info(), "count": deploy_plan.machine_pair_cnt}
-            ticket_data["resource_spec"].update(master=master_spec, slave=slave_spec)
+    def patch_resource_params(self, ticket_data, spec_map: Dict[int, Spec] = None):
+        """
+        将资源池部署信息写入到ticket_data。
+        @param ticket_data: 待填充的字典
+        @param spec_map: 规格缓存数据, 避免频繁查询数据库
+        """
+
+        spec_map = spec_map or {}
+        resource_spec = ticket_data["resource_spec"]
+        for role, role_spec in resource_spec.items():
+            # 如果该存在无需申请，则跳过
+            if not role_spec["count"]:
+                continue
+
+            spec = spec_map.get(role_spec["spec_id"]) or Spec.objects.get(spec_id=role_spec["spec_id"])
+            role_info = {**spec.get_spec_info(), "count": role_spec["count"]}
+            # 如果角色是backend_group，则默认角色信息写入master和slave
+            if role == "backend_group":
+                resource_spec["master"] = resource_spec["slave"] = role_info
+            else:
+                resource_spec[role] = role_info
+
+    def write_node_infos(self, ticket_data, node_infos):
+        """将资源申请信息写入ticket_data"""
+        ticket_data.update({"nodes": node_infos})
 
     def _run(self) -> None:
         next_flow = self.ticket.next_flow()
         if next_flow.flow_type != FlowType.INNER_FLOW:
             raise ResourceApplyException(_("资源申请下一个节点不为部署节点，请重新编排"))
 
+        # 提前为inner flow生成root id，要写入操作记录中
+        next_flow.flow_obj_id = f"{date.today()}{uuid.uuid1().hex[:6]}".replace("-", "")
+        next_flow.save()
+
         # 资源申请
-        resource_request_id, node_infos, __ = self.apply_resource(self.flow_obj.details)
+        resource_request_id, node_infos = self.apply_resource(self.flow_obj.details)
 
         # 将机器信息写入ticket和inner flow
-        next_flow.details["ticket_data"].update({"nodes": node_infos, "resource_request_id": resource_request_id})
-        # 将资源池部署信息写入到inner flow
-        self.patch_resource_params(ticket_data=next_flow.details["ticket_data"])
+        self.write_node_infos(next_flow.details["ticket_data"], node_infos)
+        self.patch_resource_params(next_flow.details["ticket_data"])
         next_flow.save(update_fields=["details"])
-
+        # 相关信息回填到单据和resource flow中
         self.ticket.update_details(resource_request_id=resource_request_id, nodes=node_infos)
         self.flow_obj.update_details(resource_apply_status=True)
 
@@ -188,7 +218,7 @@ class ResourceApplyFlow(BaseTicketFlow):
 
 class ResourceBatchApplyFlow(ResourceApplyFlow):
     """
-    内置批量的资源申请，一般用于批量的添加从库，添加proxy等
+    内置批量的资源申请，一般单据的批量操作。(比如mysql的添加从库)
     内置格式参考：
     "info": [
         {
@@ -200,44 +230,40 @@ class ResourceBatchApplyFlow(ResourceApplyFlow):
     ]
     """
 
-    def _run(self) -> None:
-        next_flow = self.ticket.next_flow()
-        if next_flow.flow_type != FlowType.INNER_FLOW:
-            raise ResourceApplyException(_("资源申请下一个节点不为部署节点，请重新编排"))
+    def patch_resource_params(self, ticket_data):
+        spec_ids: List[int] = []
+        for info in ticket_data["infos"]:
+            spec_ids.extend([data["spec_id"] for data in info["resource_spec"].values()])
 
-        # 目前可能存在一个单据多个集群同时操作，但是集群的云区域不同，故当前考虑是批量请求资源池接口
-        # TODO: 资源池申请暂不支持跨云查询
-        infos = self.flow_obj.details["infos"]
-        for index, apply_info in enumerate(infos):
-            apply_info.update(index=index)
+        # 提前缓存数据库查询数据，避免多次IO
+        spec_map = {spec.spec_id: spec for spec in Spec.objects.filter(spec_id__in=spec_ids)}
+        for info in ticket_data["infos"]:
+            super().patch_resource_params(info, spec_map)
 
-        params_list = [{"ticket_data": info} for info in infos]
-        batch_apply_result = request_multi_thread(
-            func=self.apply_resource,
-            params_list=params_list,
-            get_data=lambda args: {
-                "resource_request_id": args[0],
-                "nodes": args[1],
-                "index": args[2],
-            },
-        )
+    def write_node_infos(self, ticket_data, node_infos):
+        """
+        解析每个角色前缀，并将角色申请资源填充到对应的info中
+        """
+        for node_group, nodes in node_infos.items():
+            # 获取当前角色组在原来info的位置，并填充申请的资源信息
+            index, group = node_group.split("_", 1)
+            ticket_data["infos"][int(index)][group] = nodes
 
-        # 将获取的资源信息，序列化到inner flow中
-        for apply_result in batch_apply_result:
-            infos[apply_result["index"]].update(apply_result["nodes"])
+    def fetch_apply_params(self, ticket_data):
+        """
+        将每个info中需要申请的角色加上前缀index，
+        并且填充为统一的apply_details进行申请
+        """
+        apply_details: List[Dict[str, Any]] = []
+        for index, info in enumerate(ticket_data["infos"]):
+            details = super().fetch_apply_params(info)
+            # 为申请的角色组表示序号
+            for node_params in details:
+                node_params["group_mark"] = f"{index}_{node_params['group_mark']}"
 
-        next_flow.details["ticket_data"].update(infos=infos)
-        next_flow.save(update_fields=["details"])
-        self.ticket.update_details(batch_apply_result=batch_apply_result)
-        self.flow_obj.update_details(resource_apply_status=True)
+            apply_details.extend(details)
 
-        # 调用后继函数
-        self.callback()
-
-        # 执行下一个流程
-        from backend.ticket.flow_manager.manager import TicketFlowManager
-
-        TicketFlowManager(ticket=self.ticket).run_next_flow()
+        return apply_details
 
 
 class ResourceDeliveryFlow(DeliveryFlow):
@@ -267,10 +293,5 @@ class ResourceBatchDeliveryFlow(ResourceDeliveryFlow):
     """
 
     def _run(self) -> str:
-        confirm_params = self.ticket.details["batch_apply_result"]
-        confirm_params_list = [{"ticket_data": info} for info in confirm_params]
-        request_multi_thread(
-            func=self.confirm_resource,
-            params_list=confirm_params_list,
-        )
-        return "ok"
+        # 暂时与单独交付节点没有区别
+        super()._run()
