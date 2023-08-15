@@ -108,4 +108,4 @@ class RedisDataCopyFlowBuilder(BaseRedisTicketFlowBuilder):
 
     @property
     def need_itsm(self):
-        return False
+        return True
