@@ -60,7 +60,7 @@ class RedisShardUpdateResourceParamBuilder(RedisApplyResourceParamBuilder):
     pass
 
 
-@builders.BuilderFactory.register(TicketType.REDIS_DATACOPY_CHECK_REPAIR)
+@builders.BuilderFactory.register(TicketType.REDIS_CLUSTER_SHARD_NUM_UPDATE)
 class RedisShardUpdateFlowBuilder(BaseRedisTicketFlowBuilder):
     serializer = RedisShardUpdateDetailSerializer
     inner_flow_builder = RedisShardUpdateParamBuilder

@@ -63,7 +63,7 @@ class RedisTypeUpdateResourceParamBuilder(RedisApplyResourceParamBuilder):
     pass
 
 
-@builders.BuilderFactory.register(TicketType.REDIS_DATACOPY_CHECK_REPAIR)
+@builders.BuilderFactory.register(TicketType.REDIS_CLUSTER_TYPE_UPDATE)
 class RedisTypeUpdateFlowBuilder(BaseRedisTicketFlowBuilder):
     serializer = RedisTypeUpdateDetailSerializer
     inner_flow_builder = RedisTypeUpdateParamBuilder
