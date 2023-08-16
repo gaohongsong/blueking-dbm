@@ -39,6 +39,7 @@ class RedisShardUpdateDetailSerializer(serializers.Serializer):
         current_spec_id = serializers.IntegerField(help_text=_("当前规格ID"))
         current_shard_num = serializers.IntegerField(help_text=_("当前分片数"))
         cluster_shard_num = serializers.IntegerField(help_text=_("目标分片数"))
+        db_version = serializers.CharField(help_text=_("版本号"))
         resource_spec = ResourceSpecSerializer(help_text=_("资源申请"))
         online_switch_type = serializers.ChoiceField(
             help_text=_("切换类型"), choices=SwitchConfirmType.get_choices(), default=SwitchConfirmType.NO_CONFIRM

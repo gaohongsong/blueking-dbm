@@ -40,6 +40,7 @@ class RedisTypeUpdateDetailSerializer(serializers.Serializer):
         current_spec_id = serializers.IntegerField(help_text=_("当前规格ID"))
         current_shard_num = serializers.IntegerField(help_text=_("当前分片数"))
         cluster_shard_num = serializers.IntegerField(help_text=_("目标分片数"))
+        db_version = serializers.CharField(help_text=_("版本号"))
         current_cluster_type = serializers.ChoiceField(choices=ClusterType.get_choices(), help_text=_("当前集群类型"))
         target_cluster_type = serializers.ChoiceField(choices=ClusterType.get_choices(), help_text=_("目标集群类型"))
         resource_spec = ResourceSpecSerializer(help_text=_("资源申请"))
