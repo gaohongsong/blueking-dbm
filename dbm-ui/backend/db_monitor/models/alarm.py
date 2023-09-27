@@ -319,7 +319,9 @@ class MonitorPolicy(AuditedModel):
         self.local_save()
 
     def patch_bk_biz_id(self, details, bk_biz_id=env.DBA_APP_BK_BIZ_ID):
-        details["bk_biz_id"] = self.bk_biz_id or bk_biz_id
+        """策略要跟随主机所属的cc业务，默认为dba业务"""
+        host_biz_id = SystemSettings.get_exact_hosting_biz(bk_biz_id)
+        details["bk_biz_id"] = host_biz_id
         return details
 
     def patch_metric_id(self, details):
