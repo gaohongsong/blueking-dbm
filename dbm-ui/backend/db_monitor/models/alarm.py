@@ -341,7 +341,7 @@ class AlertRule(AuditedModel):
     def clear(cls, ids=None):
         """清理所有平台告警策略"""
 
-        ids = list(cls.objects.all().values_list("monitor_policy_id", flat=True)) if not ids else ids.split(",")
+        ids = list(cls.objects.all().values_list("monitor_strategy_id", flat=True)) if not ids else ids.split(",")
         params = {"bk_biz_id": env.DBA_APP_BK_BIZ_ID, "ids": ids}
         response = BKMonitorV3Api.delete_alarm_strategy_v3(params, use_admin=True, raw=True)
         if not response.get("result"):

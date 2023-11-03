@@ -35,7 +35,7 @@
             "unit": "",
             "alias": "a",
             "functions": [],
-            "metric_id": "bk_monitor.exporter_dbm_mysqld_exporter.__default__.mysql_info_schema_auto_increment_column",
+            "metric_id": "bk_monitor.exporter_dbm_mysql_exporter.__default__.mysql_info_schema_auto_increment_column",
             "agg_method": "AVG",
             "agg_interval": 60,
             "metric_field": "mysql_info_schema_auto_increment_column",
@@ -60,7 +60,7 @@
               "appid"
             ],
             "data_type_label": "time_series",
-            "result_table_id": "exporter_dbm_mysqld_exporter.__default__",
+            "result_table_id": "exporter_dbm_mysql_exporter.__default__",
             "data_source_label": "bk_monitor"
           },
           {
@@ -68,7 +68,7 @@
             "unit": "",
             "alias": "b",
             "functions": [],
-            "metric_id": "bk_monitor.exporter_dbm_mysqld_exporter.__default__.mysql_info_schema_auto_increment_column_max",
+            "metric_id": "bk_monitor.exporter_dbm_mysql_exporter.__default__.mysql_info_schema_auto_increment_column_max",
             "agg_method": "AVG",
             "agg_interval": 60,
             "metric_field": "mysql_info_schema_auto_increment_column_max",
@@ -93,7 +93,7 @@
               "appid"
             ],
             "data_type_label": "time_series",
-            "result_table_id": "exporter_dbm_mysqld_exporter.__default__",
+            "result_table_id": "exporter_dbm_mysql_exporter.__default__",
             "data_source_label": "bk_monitor"
           }
         ],

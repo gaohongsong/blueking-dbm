@@ -60,11 +60,11 @@ QUERY_TEMPLATE = {
         "range": 15,
         "used": """sum by (cluster_domain) (
                     max_over_time(
-                        bkmonitor:exporter_dbm_mysqld_exporter:mysql_datadir_df_used_mb{instance_role="orphan"}[5m]
+                        bkmonitor:exporter_dbm_mysql_exporter:mysql_datadir_df_used_mb{instance_role="orphan"}[5m]
                     ) * 1024 * 1024 )""",
         "total": """max by (cluster_domain) (
                     max_over_time(
-                        bkmonitor:exporter_dbm_mysqld_exporter:mysql_datadir_df_total_mb{instance_role="orphan"}[5m]
+                        bkmonitor:exporter_dbm_mysql_exporter:mysql_datadir_df_total_mb{instance_role="orphan"}[5m]
                     ) * 1024 * 1024 )""",
     },
     ClusterType.TenDBHA: {
@@ -72,13 +72,13 @@ QUERY_TEMPLATE = {
         "used": """sum by (cluster_domain) (
             max by (cluster_domain, ip) (
                 max_over_time(
-                    bkmonitor:exporter_dbm_mysqld_exporter:mysql_datadir_df_used_mb{instance_role="backend_master"}[5m]
+                    bkmonitor:exporter_dbm_mysql_exporter:mysql_datadir_df_used_mb{instance_role="backend_master"}[5m]
                 ) * 1024 * 1024
             ))""",
         "total": """sum by (cluster_domain) (
             max by (cluster_domain, ip) (
                 max_over_time(
-                    bkmonitor:exporter_dbm_mysqld_exporter:mysql_datadir_df_total_mb{instance_role="backend_master"}[5m]
+                    bkmonitor:exporter_dbm_mysql_exporter:mysql_datadir_df_total_mb{instance_role="backend_master"}[5m]
                 ) * 1024 * 1024
             ))""",
     },
@@ -87,12 +87,12 @@ QUERY_TEMPLATE = {
         "used": """sum by (cluster_domain) (
             avg by (cluster_domain, ip) (
                 avg_over_time(
-                    bkmonitor:exporter_dbm_mysqld_exporter:mysql_datadir_df_used_mb{instance_role="remote_master"}[1m]
+                    bkmonitor:exporter_dbm_mysql_exporter:mysql_datadir_df_used_mb{instance_role="remote_master"}[1m]
                 ) * 1024))""",
         "total": """sum by (cluster_domain) (
             avg by (cluster_domain, ip) (
                 avg_over_time(
-                    bkmonitor:exporter_dbm_mysqld_exporter:mysql_datadir_df_total_mb{instance_role="remote_master"}[1m]
+                    bkmonitor:exporter_dbm_mysql_exporter:mysql_datadir_df_total_mb{instance_role="remote_master"}[1m]
                 ) * 1024))""",
     },
     # es采集器本身存在容量统计指标（elasticsearch_filesystem_data_size_bytes、elasticsearch_indices_store_size_bytes）

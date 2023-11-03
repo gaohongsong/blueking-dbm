@@ -35,7 +35,7 @@
             "unit": "",
             "alias": "a",
             "functions": [],
-            "metric_id": "bk_monitor.exporter_dbm_mysqld_exporter.__default__.mysql_slave_status_slave_io_running",
+            "metric_id": "bk_monitor.exporter_dbm_mysql_exporter.__default__.mysql_slave_status_slave_io_running",
             "agg_method": "AVG",
             "agg_interval": 60,
             "metric_field": "mysql_slave_status_slave_io_running",
@@ -58,7 +58,7 @@
               "appid"
             ],
             "data_type_label": "time_series",
-            "result_table_id": "exporter_dbm_mysqld_exporter.__default__",
+            "result_table_id": "exporter_dbm_mysql_exporter.__default__",
             "data_source_label": "bk_monitor"
           },
           {
@@ -66,7 +66,7 @@
             "unit": "",
             "alias": "b",
             "functions": [],
-            "metric_id": "bk_monitor.exporter_dbm_mysqld_exporter.__default__.mysql_slave_status_slave_sql_running",
+            "metric_id": "bk_monitor.exporter_dbm_mysql_exporter.__default__.mysql_slave_status_slave_sql_running",
             "agg_method": "AVG",
             "agg_interval": 60,
             "metric_field": "mysql_slave_status_slave_sql_running",
@@ -89,7 +89,7 @@
               "appid"
             ],
             "data_type_label": "time_series",
-            "result_table_id": "exporter_dbm_mysqld_exporter.__default__",
+            "result_table_id": "exporter_dbm_mysql_exporter.__default__",
             "data_source_label": "bk_monitor"
           }
         ],
