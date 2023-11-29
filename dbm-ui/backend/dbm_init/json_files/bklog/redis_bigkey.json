@@ -1,9 +1,9 @@
 {
     "bk_biz_id": {{bk_biz_id}},
     "etl_config": "bk_log_json",
-    "table_id": "redis_bigkey1",
-    "collector_config_name": "redis_bigkey1",
-    "collector_config_name_en": "redis_bigkey1",
+    "table_id": "redis_bigkey",
+    "collector_config_name": "redis_bigkey",
+    "collector_config_name_en": "redis_bigkey",
     "collector_scenario_id": "row",
     "category_id": "application_check",
     "storage_cluster_id": 3,
