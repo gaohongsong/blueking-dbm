@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -10,12 +11,16 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 
+	"db-apm/metrics"
+	"db-apm/trace"
+	metric "dbm-services/mysql/db-remote-service/pkg/apm"
 	"dbm-services/mysql/db-remote-service/pkg/config"
 	"dbm-services/mysql/db-remote-service/pkg/service"
-
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cobra"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
@@ -33,11 +38,28 @@ var rootCmd = &cobra.Command{
 
 		r := gin.Default()
 
+		// add otlgin middleware
+		r.Use(
+			gin.Recovery(),
+			otelgin.Middleware("drs"),
+		)
+
+		// add prom metrics middleware
+		m := metrics.NewPrometheus("drs", metric.CustomMetrics)
+		m.Use(r)
+
 		r.Handle("GET", "/ping", func(context *gin.Context) {
+			req := context.Request
 			context.String(http.StatusOK, "pong")
+			metrics.Id(metric.ErrCnt).Inc([]string{req.URL.String(), req.Method, strconv.Itoa(http.StatusOK)}...)
+			metrics.Id(metric.ExecuteCnt).Inc([]string{req.URL.String(), req.Method, strconv.Itoa(http.StatusOK)}...)
 		})
 
 		service.RegisterRouter(r)
+
+		// add trace provider
+		traceService := &trace.Service{}
+		traceService.Reload(context.TODO())
 
 		if config.RuntimeConfig.TLS {
 			slog.Info("run in tls mode")
