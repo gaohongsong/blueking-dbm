@@ -23,20 +23,14 @@ from backend.ticket.constants import TicketType
 
 class MongoDBApplyDetailSerializer(BigDataApplyDetailsSerializer):
     bk_cloud_id = serializers.IntegerField(help_text=_("云区域ID"))
-    db_module_id = serializers.IntegerField(help_text=_("DB模块ID"))
-
     # display fields
     bk_cloud_name = serializers.SerializerMethodField(help_text=_("云区域"))
-    db_module_name = serializers.SerializerMethodField(help_text=_("DB模块名"))
     city_name = serializers.SerializerMethodField(help_text=_("城市名"))
 
     def get_bk_cloud_name(self, obj):
         clouds = ResourceQueryHelper.search_cc_cloud(get_cache=True)
         return clouds[str(obj["bk_cloud_id"])]["bk_cloud_name"]
 
-    def get_db_module_name(self, obj):
-        db_module_id = obj["db_module_id"]
-        return self.context["ticket_ctx"].db_module_map.get(db_module_id) or f"db-module-{db_module_id}"
 
     def get_city_name(self, obj):
         city_code = obj["city_code"]
@@ -60,8 +54,8 @@ class MongoDBApplyFlowParamBuilder(builders.FlowParamBuilder):
 class MongoDBApplyResourceParamBuilder(builders.ResourceApplyParamBuilder):
     def post_callback(self):
         next_flow = self.ticket.next_flow()
-        MongoDB_nodes = next_flow.details["ticket_data"].pop("nodes")["MongoDB"]
-        next_flow.details["ticket_data"].update(nodes=MongoDB_nodes)
+        mongodb_nodes = next_flow.details["ticket_data"].pop("nodes")["mongodb"]
+        next_flow.details["ticket_data"].update(nodes=mongodb_nodes)
         next_flow.save(update_fields=["details"])
 
 
